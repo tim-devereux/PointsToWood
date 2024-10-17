@@ -1,0 +1,33 @@
+# Ignore the archived folder
+/archived/
+
+# Ignore the data folder
+/data/
+
+# Ignore any archived or data folder in subdirectories
+**/archived/
+**/data/
+
+# Optional: Ignore common Python-related files
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+.mypy_cache
+.pytest_cache
+.hypothesispoints2wood/data/
+points2wood/archived/
