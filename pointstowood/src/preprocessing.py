@@ -55,7 +55,8 @@ class Voxelise:
     def grid(self):
         indices_list = []
         for size in self.gridsize:
-            voxelised = voxel_grid(self.pos, size)
+            xyz_only = self.pos[:, :3]
+            voxelised = voxel_grid(xyz_only, size)
             for vx in torch.unique(voxelised):
                 voxel = (voxelised == vx).nonzero(as_tuple=True)[0]
                 if voxel.size(0) < self.minpoints:
