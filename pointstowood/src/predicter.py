@@ -9,7 +9,7 @@ import torch
 from abc import ABC
 from torch_geometric.data import Dataset, Data
 from torch_geometric.loader import DataLoader
-from src.io import save_file
+from src.io import save_file, add_wood_classification, add_wood_confidence
 from collections import OrderedDict
 from numba import jit, prange, set_num_threads
 import glob
@@ -227,10 +227,46 @@ def SemanticSegmentation(args):
     args.pc = classifier.collect_predictions(classified_pc, args.pc)
 
     '''
-    Save final classified point cloud. 
+    Create two output files: one with classification and one with confidence scores. 
     '''
-
-    headers = list(dict.fromkeys(args.headers+['n_z', 'label', 'pwood']))
-    save_file(args.odir, args.pc.copy(), additional_fields= headers, verbose=False)    
+    
+    # Check if raycloud format preservation is requested
+    preserve_raycloud = getattr(args, 'preserve_raycloud_format', False)
+    
+    # Restore alpha channel for raycloud format (if it was used as reflectance)
+    if preserve_raycloud and 'alpha' not in args.pc.columns:
+        if 'original_alpha' in args.pc.columns:
+            args.pc['alpha'] = args.pc['original_alpha']
+            args.pc = args.pc.drop(columns=['original_alpha'])
+        else:
+            args.pc['alpha'] = 255  # Default alpha value
+    
+    # Create classification version (overwrites alpha channel with class labels)
+    pc_classified = add_wood_classification(args.pc, args.pc['pwood'].values, args.is_wood)
+    
+    # Create confidence version (overwrites alpha channel with confidence scores)
+    pc_confidence = add_wood_confidence(args.pc, args.pc['pwood'].values)
+    
+    # Generate output file names
+    base_path = args.odir.replace('_ours.ply', '')
+    class_output = base_path + '_classified.ply'
+    conf_output = base_path + '_confidence.ply'
+    
+    # For raycloud format, only save raycloud fields
+    if preserve_raycloud:
+        raycloud_fields = [h for h in args.headers if h in ['time', 'nx', 'ny', 'nz', 'red', 'green', 'blue']]
+        save_headers = raycloud_fields
+    else:
+        save_headers = list(dict.fromkeys(args.headers+['n_z', 'label', 'pwood']))
+    
+    # Save classification file
+    save_file(class_output, pc_classified.copy(), additional_fields=save_headers, 
+             verbose=False, preserve_raycloud_format=preserve_raycloud)
+    print(f"Saved classification file: {class_output}")
+    
+    # Save confidence file  
+    save_file(conf_output, pc_confidence.copy(), additional_fields=save_headers,
+             verbose=False, preserve_raycloud_format=preserve_raycloud)
+    print(f"Saved confidence file: {conf_output}")
     
     return args

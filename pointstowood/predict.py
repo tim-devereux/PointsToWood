@@ -38,7 +38,16 @@ def preprocess_point_cloud_data(df):
     columns_to_drop = ['label', 'pwood', 'pleaf']
     df = df.drop(columns=columns_to_drop, errors='ignore')
     df = df.rename(columns=lambda x: x.replace('scalar_', '') if 'scalar_' in x else x)
-    df = df.rename(columns={'refl': 'reflectance', 'intensity': 'reflectance'})
+    
+    # For raycloud format, use alpha channel as intensity/reflectance
+    if 'alpha' in df.columns and 'reflectance' not in df.columns and 'intensity' not in df.columns:
+        # Store original alpha values before using as reflectance
+        df['original_alpha'] = df['alpha'].copy()
+        df = df.rename(columns={'alpha': 'reflectance'})
+        print('Raycloud format detected: using alpha channel as reflectance')
+    else:
+        df = df.rename(columns={'refl': 'reflectance', 'intensity': 'reflectance'})
+    
     headers = [header for header in df.columns[3:] if header not in columns_to_drop]
     if 'reflectance' not in df.columns:
         df['reflectance'] = np.zeros(len(df))
@@ -56,7 +65,8 @@ def preprocess_point_cloud_data(df):
 -------------------------------------------------------------------------------------------------------------------------------
 '''
 
-if __name__ == '__main__':
+def main():
+    """Main entry point for the prediction script."""
     
     parser = argparse.ArgumentParser()
     parser.add_argument('--point-cloud', '-p', default=[], nargs='+', type=str, help='list of point cloud files')    
@@ -71,6 +81,7 @@ if __name__ == '__main__':
     parser.add_argument('--is-wood', default=0.5, type=float, help='a probability above which points within KNN are classified as wood')
     parser.add_argument('--any-wood', default=1, type=float, help='a probability above which ANY point within KNN is classified as wood')
     parser.add_argument('--output_fmt', default='ply', help="file type of output")
+    parser.add_argument('--preserve_raycloud_format', action='store_true', help="preserve raycloud format and only save raycloud fields")
     parser.add_argument('--verbose', action='store_true', help="print stuff")
 
     args = parser.parse_args()
@@ -154,3 +165,6 @@ if __name__ == '__main__':
         if args.verbose:
             print(f'peak memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e6}')
             print(f'runtime: {(datetime.datetime.now() - start).seconds}')
+
+if __name__ == '__main__':
+    main()
