@@ -1,4 +1,5 @@
 import datetime
+from tile_pointcloud import tile_point_cloud, merge_predictions
 start = datetime.datetime.now()
 import resource
 import os
@@ -82,6 +83,9 @@ def main():
     parser.add_argument('--any-wood', default=1, type=float, help='a probability above which ANY point within KNN is classified as wood')
     parser.add_argument('--output_fmt', default='ply', help="file type of output")
     parser.add_argument('--preserve_raycloud_format', action='store_true', help="preserve raycloud format and only save raycloud fields")
+    parser.add_argument('--tile-size', type=float, default=0.0, help='Tile size in meters for input tiling (0 = no tiling)')
+    parser.add_argument('--tile-overlap', type=float, default=0.1, help='Overlap fraction between tiles (0.0-0.5)')
+    parser.add_argument('--auto-merge', action='store_true', help='Automatically merge tile results into single output file')
     parser.add_argument('--verbose', action='store_true', help="print stuff")
 
     args = parser.parse_args()
@@ -124,6 +128,20 @@ def main():
 
     if os.path.exists(args.vxfile): shutil.rmtree(args.vxfile)
 
+    # Check if input tiling is requested
+    original_files = args.point_cloud.copy()
+    all_output_files = []
+    
+    if args.tile_size > 0:
+        print(f"Input tiling enabled: {args.tile_size}m tiles with {args.tile_overlap*100:.1f}% overlap")        
+        tiled_files = []
+        for point_cloud_file in args.point_cloud:
+            tile_files = tile_point_cloud(point_cloud_file, args.tile_size, args.tile_overlap)
+            tiled_files.extend(tile_files)
+        
+        print(f"Processing {len(tiled_files)} tiles...")
+        args.point_cloud = tiled_files
+
     for point_cloud_file in args.point_cloud:
 
         '''
@@ -165,6 +183,46 @@ def main():
         if args.verbose:
             print(f'peak memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e6}')
             print(f'runtime: {(datetime.datetime.now() - start).seconds}')
+        
+        # Collect output files for potential merging
+        if args.tile_size > 0:
+            base_path = args.odir.replace('_ours.ply', '')
+            class_output = base_path + '_classified.ply'
+            conf_output = base_path + '_confidence.ply'
+            all_output_files.append({
+                'classified': class_output,
+                'confidence': conf_output,
+                'original': point_cloud_file
+            })
+
+    # Handle merging if tiling was used
+    if args.tile_size > 0 and args.auto_merge:
+        print(f"\nMerging {len(all_output_files)} tile results...")
+        
+        for original_file in original_files:
+            # Find all tiles that belong to this original file
+            base_name = OP.splitext(OP.basename(original_file))[0]
+            classified_tiles = [f['classified'] for f in all_output_files if base_name in f['original']]
+            confidence_tiles = [f['confidence'] for f in all_output_files if base_name in f['original']]
+            
+            if classified_tiles:
+                # Create merged output filenames
+                output_dir = OP.dirname(original_file)
+                merged_class = OP.join(output_dir, f"{base_name}_merged_classified.ply")
+                merged_conf = OP.join(output_dir, f"{base_name}_merged_confidence.ply")
+                
+                # Merge tiles
+                merge_predictions(classified_tiles, merged_class, remove_tiles=True)
+                merge_predictions(confidence_tiles, merged_conf, remove_tiles=True)
+                
+                print(f"Merged results saved to:")
+                print(f"  Classification: {merged_class}")
+                print(f"  Confidence: {merged_conf}")
+    
+    elif args.tile_size > 0:
+        print(f"\nTiling completed. {len(all_output_files)} tile results created.")
+        print("Use --auto-merge flag to automatically merge results, or merge manually using:")
+        print("  python utils/tile_pointcloud.py --merge tile_*_classified.ply --merge-output merged_classified.ply")
 
 if __name__ == '__main__':
     main()

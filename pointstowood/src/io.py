@@ -48,6 +48,14 @@ def read_ply(fp, newline=None):
 
 def write_ply(output_name, pc, comments=[], preserve_raycloud_format=False):
 
+    # Create a copy to avoid modifying original
+    pc = pc.copy()
+    
+    # Remove duplicate columns if they exist
+    if len(pc.columns) != len(set(pc.columns)):
+        print(f"Warning: Removing duplicate columns from DataFrame")
+        pc = pc.loc[:, ~pc.columns.duplicated()]
+    
     cols = ['x', 'y', 'z']
     pc = pc.astype({'x': 'float64', 'y': 'float64', 'z': 'float64'})
 
